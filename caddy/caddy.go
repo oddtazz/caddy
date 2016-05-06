@@ -232,6 +232,22 @@ func startServers(groupings bindingGroup) error {
 				file.Close()
 				delete(loadedGob.ListenerFds, s.Addr)
 			}
+		} else if len(restartFds) > 0 {
+			// Reuse the listeners for in-process restart
+			if file, ok := restartFds[s.Addr]; ok {
+				fln, err := net.FileListener(file)
+				if err != nil {
+					return err
+				}
+
+				ln, ok = fln.(server.ListenerFile)
+				if !ok {
+					return errors.New("listener for " + s.Addr + " was not a ListenerFile")
+				}
+
+				file.Close()
+				delete(restartFds, s.Addr)
+			}
 		}
 
 		wg.Add(1)
@@ -272,6 +288,11 @@ func startServers(groupings bindingGroup) error {
 		for key, fdIndex := range loadedGob.ListenerFds {
 			os.NewFile(fdIndex, "").Close()
 			delete(loadedGob.ListenerFds, key)
+		}
+	} else if len(restartFds) > 0 {
+		for key, file := range restartFds {
+			file.Close()
+			delete(restartFds, key)
 		}
 	}
 
